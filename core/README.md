@@ -1,1 +1,1 @@
-星邮客户端核心来自 [cortico-world-starpost v0.30.0](https://github.com/hth768/cortico-world-starpost/tree/v0.30.0)，采用 MIT 许可。快照保留 DSH 专用的更新提醒文案；生命周期及消息投递与该版本核心一致，在卸载时中止轮询并等待后台工作完成。构建时只打包客户端。测试使用 npm 上同版本的真实中转服务。
+星邮客户端核心来自 [cortico-world-starpost v0.32.0](https://github.com/hth768/cortico-world-starpost/tree/v0.32.0)，采用 MIT 许可。快照保留 DSH 专用的更新提醒文案；生命周期及消息投递与该版本核心一致，在卸载时中止轮询并等待后台工作完成。构建时只打包客户端。测试使用 npm 上同版本的真实中转服务。

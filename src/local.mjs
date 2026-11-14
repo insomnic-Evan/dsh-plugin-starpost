@@ -29,6 +29,15 @@ export function options(settings, dir) {
   cfg.receiveMode = settings.receiveMode ?? cfg.receiveMode;
   if (!['active','mixed','passive'].includes(cfg.receiveMode)) throw Error('接收模式须为 active、mixed 或 passive');
   cfg.emojiDir = resolve(dir, settings.emojiDir || 'emoji');
+  if(settings.speech!==undefined){
+    if(!settings.speech||typeof settings.speech!=='object'||Array.isArray(settings.speech))throw Error('speech 须为配置对象');
+    for(const [key,value]of Object.entries(settings.speech)){
+      if(!Object.hasOwn(cfg.speech,key)||typeof value!=='string')throw Error('未知或无效的语音配置：'+key);
+      if(key.endsWith('Protocol')&&!['openai','json'].includes(value))throw Error('语音协议须为 openai 或 json');
+      if(key.endsWith('KeySecret')&&value&&!/^[A-Za-z_][A-Za-z0-9_]*$/.test(value))throw Error('密钥应配置环境变量名');
+      cfg.speech[key]=value;
+    }
+  }
   for (const [key, min, max] of [['maxMessagesPerDay',0,1000000],['maxWerewolfGamesPerDay',0,1000],['maxGroups',0,1000],['maxPrivateChats',0,1000],['deliveryIntervalMs',1000,300000]]) {
     if (Object.hasOwn(settings,key)) {
       if (!Number.isInteger(settings[key]) || settings[key] < min || settings[key] > max) throw Error(key+' 超出允许范围');
@@ -56,7 +65,7 @@ export function lock(dir) {
 }
 export function makeWorld(dir, settings) {
   const cfg = options(settings, dir);
-  return new StarpostWorld(cfg, dir, dir, dir, 'Asia/Shanghai', () => '', Date.now, () => relayVersion);
+  return new StarpostWorld(cfg, dir, dir, dir, 'Asia/Shanghai', name => /^[A-Za-z_][A-Za-z0-9_]*$/.test(name)?process.env[name]??'':'', Date.now, () => relayVersion);
 }
 export function pinServer(dir, settings) {
   const origin = options(settings,dir).serverUrl;
