@@ -2,10 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { randomUUID } from 'node:crypto';
+import { randomUUID, createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createStarpostServer } from 'cortico-world-starpost/server/server.mjs';
@@ -43,6 +43,10 @@ test('two isolated accounts, a real DSH agent, message boundaries, replies and s
     relay.store.befriend(who.botId,'10001');
     await mountAgentLoopTestDependencies(ctx);
     const pixel=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/lX8AAAAASUVORK5CYII=','base64');
+    const privateIndex=join(process.env.STARPOST_DSH_HOME,'sticker-index.json');
+    const hash=createHash('sha256').update(pixel).digest('hex');
+    const privateLabels=JSON.stringify({[hash]:{hash,file:`sticker-${hash.slice(0,16)}.png`,label:'PRIVATE_QQ_INDEX_MUST_NOT_IMPORT'}});
+    writeFileSync(privateIndex,privateLabels);
     let imageSaved=false;
     ctx.provide('attachments',{async saveImage(input) {
       assert.deepEqual(Buffer.from(input.data),pixel); imageSaved=true;
@@ -92,6 +96,9 @@ test('two isolated accounts, a real DSH agent, message boundaries, replies and s
     await mobile('/mobile/rpc',{action:'account.bind',args:{botId:who.botId,credential:secret}},human.accessToken);
     await mobile('/mobile/rpc',{action:'owner.address',args:{address:'主人'}},human.accessToken);
     const humanRpc=(action,args)=>mobile('/mobile/rpc',{action,args},human.accessToken);
+    const humanStatus=await humanRpc('human.status',{});
+    assert.equal(humanStatus.rules.dailyLimit,null);
+    assert.equal(humanStatus.rules.remainingToday,null);
     const baseline=await humanRpc('owner.notifications',{includeChats:true});
     relay.store.saveGroup({...group,members:[...group.members,human.humanId]});
     await humanRpc('chat.preferences',{kind:'group',target:group.id,muted:true});
@@ -106,6 +113,10 @@ test('two isolated accounts, a real DSH agent, message boundaries, replies and s
     assert(JSON.stringify(requests).includes('通知边界验证'),'bound DSH agent did not receive the owner message');
     assert(requests.flat().some(m=>m.source?.kind===plugin.name&&m.source?.form==='relay'&&JSON.stringify(m.content).includes('通知边界验证')));
     assert(imageSaved && requests.flat().some(m=>m.content.some(b=>b.type==='image'&&b.attachment.attachmentId==='test-image')));
+    const stickers=await ok(call(agent,'sticker','stats',{}));
+    assert(!JSON.stringify(stickers).includes('PRIVATE_QQ_INDEX_MUST_NOT_IMPORT'));
+    assert(!JSON.stringify(requests).includes('PRIVATE_QQ_INDEX_MUST_NOT_IMPORT'));
+    assert.equal(readFileSync(privateIndex,'utf8'),privateLabels);
     assert(!JSON.stringify(requests).includes(secret));
   } finally {
     try { await fork?.dispose(); } finally {

@@ -15,8 +15,8 @@ if ($Action -eq 'Install') {
   }
   $vendor = Join-Path $profileDir 'vendor'
   New-Item -ItemType Directory -Force -Path $vendor | Out-Null
-  Copy-Item -LiteralPath $Archive -Destination (Join-Path $vendor 'dsh-plugin-starpost-0.1.1.tgz') -Force
-  & (Join-Path $Runtime 'bin\dsh.cmd') plugin --profile web add 'file:vendor/dsh-plugin-starpost-0.1.1.tgz'
+  Copy-Item -LiteralPath $Archive -Destination (Join-Path $vendor 'dsh-plugin-starpost-0.1.2.tgz') -Force
+  & (Join-Path $Runtime 'bin\dsh.cmd') plugin --profile web add 'file:vendor/dsh-plugin-starpost-0.1.2.tgz'
 } else {
   $cli = Join-Path $profileDir 'node_modules\dsh-plugin-starpost\src\account.mjs'
   if (-not (Test-Path -LiteralPath $cli)) { throw '请先安装插件包' }

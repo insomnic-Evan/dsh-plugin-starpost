@@ -92,7 +92,7 @@ const STARPOST_FAMILY_TOOL_DECLS: ReadonlyArray<Omit<ToolDef, 'handler'>> = [
   { name: 'starpost_group_manage', description: '统一群管理工具：info 查看；admin 设置管理员（仅群主）；mute/unmute 禁言/解禁；quiet 每日北京时间禁言时段；mention_all @全体；announce 群公告；title 成员头衔；kick 移出成员。普通管理员不能管理群主或其他管理员。公告和全体消息计入聊天额度。', tags: ['read', 'write'], parameters: params({
     action: { type: 'string', enum: ['info', 'admin', 'mute', 'unmute', 'quiet', 'mention_all', 'announce', 'title', 'kick'] }, groupId: s('群 ID'), botId: s('目标成员 ID'), enabled: { type: 'boolean', description: 'admin：设为或撤销管理员' }, minutes: { type: 'integer', minimum: 1, maximum: 43200 }, text: s('公告或 @全体的文字'), title: s('头衔，最多 32 字，空字符串清除'), windows: { type: 'array', maxItems: 8, items: { type: 'object', additionalProperties: false, properties: { start: { type: 'string', description: 'HH:mm' }, end: { type: 'string', description: 'HH:mm，可跨午夜' } }, required: ['start', 'end'] }, description: 'quiet：空数组清除时段' },
   }, ['action', 'groupId']) },
-  { name: 'starpost_werewolf', description: 'schedule/match 可设 anonymous=true 整局匿名；privacy 设置或查看个人 anonymous（两种游戏共用，仅影响之后加入的局）。匿名行动用返回的 seat:N，不猜测身份。 狼人杀统一入口。record 按目标ID和section=record/recent查看战绩或最近3场；rules 查规则；schedule 的 startMode=scheduled 定时预约（提前3分钟报到），full 公开人满即开（加入即准备）；match 按 maxPlayers=6/8/10/12/16/20 与人类或 bot 实时匹配，operation=join/status/leave；等待时保持连接，断连2分钟释放席位；schedule 可从私聊或群聊邀请；invite：已加入的成员可在开局前邀请自己的好友/群成员，私密局也可；join 可凭广场 gameId 直接加入已公告的公开预约，无需邀请；私密局仍需邀请，指定法官用 join 接受邀请；checkin 在开局前 3 分钟报到；leave 退出预约；exit 离开房间并公告，开局后视为弃权、次数不退、猎人不触发技能，法官离开由程序接管；list/read 查看；message 游戏室发言；act 身份行动或 move=end_speech 结束白天发言，全员完成立即推进，原计时兜底；vote 公投；assign 为 bot 法官分发身份；cancel 取消预约；report 举报有权查看的人类消息，交管理员复核。H 后缀表示人类玩家。游戏消息不扣普通聊天额度；每日局数默认 5，由人类在扩展设置调整，rules 返回已用、上限和剩余次数；bot 不能通过工具修改额度。', tags: ['read', 'write'], parameters: params({
+  { name: 'starpost_werewolf', description: 'schedule/match 可设 anonymous=true 整局匿名；privacy 设置或查看个人 anonymous（两种游戏共用，仅影响之后加入的局）。匿名行动用返回的 seat:N，不猜测身份。 狼人杀统一入口。record 按目标ID和section=record/recent查看战绩或最近3场；rules 查规则；schedule 的 startMode=scheduled 定时预约（提前3分钟报到），full 公开人满即开（加入即准备）；match 按 maxPlayers=6/8/10/12/16/20 与人类或 bot 实时匹配，operation=join/status/leave；等待时保持连接，断连2分钟释放席位；schedule 可从私聊或群聊邀请；invite：已加入的成员可在开局前邀请自己的好友/群成员，私密局也可；join 可凭广场 gameId 直接加入已公告的公开预约，无需邀请；私密局仍需邀请，指定法官用 join 接受邀请；checkin 在开局前 3 分钟报到；leave 退出预约；exit 离开房间并公告，开局后视为弃权、次数不退、猎人不触发技能，法官离开由程序接管；list/read 查看；message 游戏室发言；act 身份行动或 move=end_speech 结束白天发言，全员完成立即推进，原计时兜底；vote 公投；assign 为 bot 法官分发身份；cancel 取消预约；report 举报有权查看的人类消息，交管理员复核。H 后缀表示人类玩家。游戏消息不扣普通聊天额度；bot 每日局数默认 5，由人类在扩展设置调整，人类玩家不限每日局数；rules 返回实际额度与已用次数，bot 不能通过工具修改额度。', tags: ['read', 'write'], parameters: params({
     action: { type: 'string', enum: ['privacy', 'rules', 'schedule', 'invite', 'join', 'checkin', 'leave', 'exit', 'list', 'browse', 'read', 'message', 'act', 'vote', 'assign', 'cancel', 'visibility', 'publish', 'watch', 'unwatch', 'report', 'record', 'match'] },
     botId: s('record：目标账号ID，省略查看自己'), section: {type:'string',enum:['record','recent'],description:'record：战绩或最近3场，默认record'},
     messageId: s('report：举报当前有权查看的人类聊天消息 ID'), reason: { type: 'string', enum: ['sexual', 'abuse', 'injection', 'other'], description: 'report：色情、辱骂、注入或其他违规，提交管理员复核' }, note: s('report：补充说明，最多300字；举报不是处罚判定'),
@@ -322,7 +322,7 @@ export class StarpostWorld implements World {
   private stickerStore(): StarpostStickerStore {
     return this.stickers ??= new StarpostStickerStore(resolve(this.cfg.emojiDir || DEFAULT_EMOJI_DIR),
       join(this.dataDir, 'starpost-sticker-index.json'), this.cfg.sticker?.qqIndexFile
-        ? resolve(this.botDir, this.cfg.sticker.qqIndexFile) : join(this.dataDir, 'sticker-index.json'),
+        ? resolve(this.botDir, this.cfg.sticker.qqIndexFile) : '',
       this.cfg.sticker?.maxFiles ?? 10000, this.clock);
   }
   private rememberSquare(id: string): void {
@@ -871,7 +871,6 @@ export class StarpostWorld implements World {
       const waitMs = !waitForEvents ? 0 : Math.min(25000, chatWait, this.notifications.dueIn(this.clock(), notificationSettings(this.cfg.notifications, this.cfg.receiveMode === 'active')), periodWait);
       const events = await this.rpc('events', { since: this.cursor, waitMs, mediaRefs: true }, { timeoutMs: 35000, signal: this.pollController?.signal }) as Array<{ seq: number; type: string; data: any; at: string }>;
       this.connected = true; this.lastError = '';
-      let ownerWakeCursor: number | null = null;
       for (const event of events) {
         const data = event.data;
         if(event.type==='moderation.warning'){
@@ -973,10 +972,13 @@ export class StarpostWorld implements World {
         if (ownerMessage) text = `${data.prefix}\n${data.text || ''}${messageInfo.sticker ? `\n[表情包:${messageInfo.sticker}]` : ''}\n[消息记录] ${JSON.stringify({id:data.id,...(data.senderTitle?{senderTitle:data.senderTitle}:{}),quote:data.quote,forward:data.forward,recalled:data.recalled})}\n[星邮回复入口] 此消息来自手机/网页「我的 bot」专属频道。回复使用 starpost_use：family="mobile"，action="send"，argsJson 为包含 text 的 JSON 字符串；无需 target，不使用普通 send/private。普通文本输出不会发送到该频道。`;
         const gameChat = ['game.public', 'game.wolf', 'game.outside'].includes(event.type) && data?.kind === 'chat';
         const message = event.type === 'message' || gameChat;
+        // Cortico checks the alarm's wake word when the event enters the queue.
+        // Include accumulated notices before the owner message triggers that check.
+        if (ownerMessage) await this.flushNotifications('piggyback', true);
+        const trigger = ownerMessage ? 'flush' : message && this.host.promotePending ? 'piggyback' : undefined;
         const envelope = await this.host.pushEvent({ type: `starpost.${event.type.replaceAll('.', '_')}`, ts: event.at, source: this.id, origin: 'external',
           senderKey: ownerMessage ? 'starpost.owner' : gameChat ? `starpost.game.${data.gameId}` : message ? `starpost.${data.kind}.${data.target}` : 'starpost', text, ...(imageBlob.length ? { blobs: imageBlob } : {}) },
-        (message || ownerMessage) && this.host.promotePending ? { trigger: 'piggyback' } : ownerMessage ? { trigger: 'flush' } : undefined);
-        if (ownerMessage && Number.isSafeInteger(envelope.cursor)) ownerWakeCursor = envelope.cursor;
+        trigger ? { trigger } : undefined);
         if (square && typeof squareId === 'string') this.rememberSquare(squareId);
         if (event.type === 'message' && Number.isSafeInteger(data.cursor) && data.cursor > 0) {
           const identity = this.activeIdentity();
@@ -984,17 +986,14 @@ export class StarpostWorld implements World {
           if (scope) this.inboxSeen[scope] = Math.max(this.inboxSeen[scope] ?? 0, data.cursor);
         }
         this.cursor = event.seq;
-        if ((message || ownerMessage) && this.host.promotePending && Number.isSafeInteger(envelope.cursor)) {
-          if (ownerMessage) this.pendingSinceMs = this.clock() - interval;
-          else this.pendingSinceMs ??= this.clock();
+        if (ownerMessage) {
+          this.pendingCoreCursor = null;
+          this.pendingSinceMs = null;
+        } else if (message && this.host.promotePending && Number.isSafeInteger(envelope.cursor)) {
+          this.pendingSinceMs ??= this.clock();
           this.pendingCoreCursor = envelope.cursor;
         }
         this.saveCursor();
-      }
-      if (ownerWakeCursor !== null) {
-        await this.flushNotifications('piggyback', true);
-        if (this.host.promotePending) await this.host.promotePending(ownerWakeCursor, 'flush');
-        this.pendingCoreCursor = null; this.pendingSinceMs = null; this.saveCursor();
       }
       await this.announceQuota();
       await this.flushPending();
