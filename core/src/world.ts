@@ -6,6 +6,7 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { World, WorldHost, WorldWebUiDecl, ToolDef } from 'cortico/core/types.ts';
 import { SpeechClient } from './speech.ts';
+import { HubAuth } from './hub-auth.ts';
 import type { StarpostConfigSection } from './config.ts';
 import { STARPOST_CONFIG_GROUP, normalizeBotId } from './config.ts';
 import { StarpostStickerStore, readStickerImage } from './stickers.ts';
@@ -195,12 +196,14 @@ export class StarpostWorld implements World {
   private inboxInitialized = false;
   private backlogUntil: Record<string, number> = {};
   private backlogScanPending = true;
+  private readonly hub: HubAuth;
   constructor(private readonly cfg: StarpostConfigSection, private readonly botDir: string, _packageDir: string, private readonly dataDir: string, private readonly timezone: string, private readonly secret: (name: string) => string, private readonly clock: () => number = Date.now, private readonly extensionVersion: () => unknown = () => JSON.parse(readFileSync(STARPOST_PACKAGE_FILE, 'utf8')).version) {
     this.speech = new SpeechClient(cfg.speech, botDir, join(dataDir,'voice-work'), secret);
     this.cursorFile = join(dataDir, 'starpost-cursor.json');
     this.identityFile = join(dataDir, 'starpost-identity.json');
     this.credentialFile = join(dataDir, 'starpost-credential.json');
     this.releaseNoticeFile = join(dataDir, 'starpost-release-notice.json');
+    this.hub = new HubAuth(dataDir, () => this.serverBase().origin, () => this.cfg.hubUrl || 'https://ffahub.net', postJson);
   }
   private async voiceText(message:any,scope:{kind:unknown;target:unknown}):Promise<string>{
     if(message.recalled)return '语音已撤回';
@@ -216,6 +219,8 @@ export class StarpostWorld implements World {
     return value;
   }
   private activeIdentity(): { botId: string; token: string } | null {
+    const hub = this.hub.session();
+    if (hub) return { botId: hub.botId, token: hub.accessToken };
     if (existsSync(this.credentialFile)) {
       const saved = JSON.parse(readFileSync(this.credentialFile, 'utf8')) as Credential;
       const botId = normalizeBotId(saved?.botId);
@@ -241,6 +246,7 @@ export class StarpostWorld implements World {
     renameSync(temp, this.credentialFile);
   }
   private async claimCredential(identity: { botId: string; token: string }): Promise<void> {
+    if (this.hub.session()) return;
     if (this.credentialClaimed || this.clock() < this.credentialClaimRetryAt) return;
     let response: { status: number; body: any };
     try { response = await postJson(new URL('/credential/claim', this.serverBase()), {},
@@ -311,16 +317,23 @@ export class StarpostWorld implements World {
     const identity = this.activeIdentity();
     if (!identity) throw new Error('请先在星邮初始页面注册');
     await this.claimCredential(identity);
+    const headers = await this.authHeaders();
     const response = await postJson(new URL('/rpc', this.serverBase()), { action, args, limits: { private: this.cfg.maxPrivateChats, groups: this.cfg.maxGroups,
       maxMessagesPerDay: this.cfg.maxMessagesPerDay ?? 300,
       maxWerewolfGamesPerDay: this.cfg.maxWerewolfGamesPerDay ?? 5,
-      periods: this.cfg.periodLimits ?? { morning: 60, afternoon: 60, sleep: 6 } } }, { authorization: `Bearer ${identity.token}`, 'x-starpost-id': identity.botId }, options);
+      periods: this.cfg.periodLimits ?? { morning: 60, afternoon: 60, sleep: 6 } } }, headers, options);
+    if (identity.token !== this.activeIdentity()?.token) throw new Error('账号认证方式已切换，请重试');
     const body = response.body as { ok: boolean; result?: any; error?: string; messageQuota?: unknown; suspendedUntil?: number };
     const quota = parseMessageQuota(body.messageQuota ?? (action === 'snapshot' ? body.result?.messageQuota : action === 'message.send' ? body.result?.quota : null));
     if (quota && (!this.quota || Date.parse(quota.observedAt) >= Date.parse(this.quota.observedAt))) { this.quota = quota; this.quotaReceivedAt = this.clock(); }
     if(Number.isSafeInteger(body.suspendedUntil)&&body.suspendedUntil! > this.clock()&&body.suspendedUntil!==this.suspendedUntil)await this.pauseDelivery(body.suspendedUntil!);
-    if (!body.ok) throw new Error(body.error ?? `HTTP ${response.status}`);
+    if (!body.ok) { this.hub.invalidate(); throw new Error(body.error ?? `HTTP ${response.status}`); }
     return body.result;
+  }
+  private async authHeaders(): Promise<Record<string, string>> {
+    if (this.hub.session()) return this.hub.headers();
+    const identity = this.activeIdentity(); if (!identity) throw new Error('星邮账号尚未登录');
+    return { authorization: `Bearer ${identity.token}`, 'x-starpost-id': identity.botId };
   }
   private image(file: unknown): { mime: string; base64: string } | null {
     if (!file) return null;
@@ -718,17 +731,27 @@ export class StarpostWorld implements World {
   }
   webUi(): WorldWebUiDecl {
     const identity = this.activeIdentity();
-    const config = { ...STARPOST_CONFIG_GROUP, schema: { ...STARPOST_CONFIG_GROUP.schema, description: (identity ? `绑定 bot 使用的 ID：${identity.botId}　凭据：${identity.token}　请勿转发凭据。` : '注册后在此显示绑定 bot 所需的 ID 与凭据。')+' 官网：https://starpost.com.cn 。手机和网页端使用邮箱登录，在设置中用 ID 与凭据绑定 bot。青少年模式开关和审批位于星邮页面顶部“设置 · 青少年模式”，与手机和网页端同步。' } };
+    const hub = this.hub.session();
+    const config = { ...STARPOST_CONFIG_GROUP, schema: { ...STARPOST_CONFIG_GROUP.schema, description: (hub ? `FFA hub 已登录，星邮 ID：${hub.botId}。授权、管理员与主运行端请到 ${hub.issuer} 管理。` : identity ? `绑定 bot 使用的 ID：${identity.botId}　凭据：${identity.token}　请勿转发凭据。` : '注册后在此显示绑定 bot 所需的 ID 与凭据。')+' 官网：https://starpost.com.cn 。已有账号保持原登录；人类可在星邮页面选择 FFA hub 浏览器配对。' } };
     return { label: '星邮', lamps: [{ label: '中转服务', state: this.connected ? 'online' : this.lastError ? 'error' : 'loading', hint: this.lastError || (this.connected ? '已连接' : '等待首次连接') }], config: [config], panels: [{ id: 'viewer', title: '星邮', description: '首次注册账号；注册后按好友或群聊查看只读聊天记录及动态。' }], invoke: async (panel, method, args) => {
       if (panel !== 'viewer') throw new Error('未知面板');
+      if (method === 'hubStatus') return this.hub.status();
+      if (method === 'hubBegin') return this.hub.begin(this.activeIdentity()?.botId ?? null, typeof args?.[0] === 'string' ? args[0].slice(0, 80) : '星邮 Cortico 运行端');
+      if (method === 'hubCancel') return this.hub.cancel();
+      if (method === 'hubFinish') {
+        const result = await this.hub.finish(this.activeIdentity()?.botId ?? null);
+        if (result.status === 'connected') { this.pollController?.abort(); this.pollController = new AbortController(); this.connected = false; this.lastError = ''; void this.poll(); }
+        return result;
+      }
       if (method === 'status') {
         const current = this.activeIdentity();
         return { registered: Boolean(current), botId: current?.botId ?? null, ...(!current && this.cfg.botId ? {
           recoveryHint: normalizeBotId(this.cfg.botId) ? '旧版手工账号缺少 .env 密钥。重装用户请在下方使用原 ID 和原凭据恢复账号。' : '旧版手工账号 ID 格式无效。Bot ID 应为不小于 10001 的 5–12 位数字；重装用户请在下方恢复已有账号。',
         } : {}) };
       }
-      if (method === 'mobileLoginInfo') { const current = this.activeIdentity(); return { botId: current?.botId ?? '', credential: current?.token ?? '', apkUrl: 'https://github.com/hth768/cortico-world-starpost/releases/latest/download/starpost-android.apk' }; }
+      if (method === 'mobileLoginInfo') { const current = this.activeIdentity(); return { botId: current?.botId ?? '', credential: this.hub.session() ? '' : current?.token ?? '', authMode: this.hub.session() ? 'hub' : 'legacy', hubUrl: this.cfg.hubUrl || 'https://ffahub.net', apkUrl: 'https://github.com/hth768/cortico-world-starpost/releases/latest/download/starpost-android.apk' }; }
       if(method==='teenControl'){
+        if (this.hub.session()) throw new Error('Hub 模式的管理员设置请前往 FFA hub 账号中心');
         const current=this.activeIdentity();if(!current)throw new Error('请先注册');
         const response=await postJson(new URL('/owner/control',this.serverBase()),{operation:args?.[0],args:args?.[1]??{}},{authorization:`Bearer ${current.token}`,'x-starpost-id':current.botId});
         if(!response.body.ok)throw new Error(response.body.error??'操作失败');return response.body.result;
@@ -809,7 +832,7 @@ export class StarpostWorld implements World {
     const notes = Array.isArray(changes) ? changes.filter((x): x is string => typeof x === 'string' && x.length <= 120 && x.trim().length > 0 && !/[\x00-\x1f\x7f]/.test(x)).slice(0, 8) : [];
     await this.host.pushEvent({ type: 'starpost.update_available', ts: new Date(this.clock()).toISOString(), source: this.id,
       origin: 'internal', senderKey: 'starpost.system',
-      text: `[星邮系统通知] 星邮 ${version} 已发布。当前 DSH 插件内置的星邮核心为 ${installed}。${notes.length ? `本次更新：${notes.join('；')}。` : ''}请提醒你的人类用户查看 dsh-plugin-starpost 是否有配套更新，由人类决定何时安装。` }, { trigger: 'flush' });
+      text: `[星邮系统通知] 星邮 ${version} 已发布；当前安装的是 ${installed}。${notes.length ? `本次更新：${notes.join('；')}。` : ''}请提醒你的人类用户更新星邮扩展，由人类决定何时安装。` }, { trigger: 'flush' });
     mkdirSync(this.dataDir, { recursive: true });
     writeFileSync(this.releaseNoticeFile, JSON.stringify({ version }), { mode: 0o600 });
   }
@@ -980,7 +1003,7 @@ export class StarpostWorld implements World {
             const identity = this.activeIdentity();
             if (!identity) throw new Error('星邮身份不可用');
             imageBytes = await getMedia(new URL(`/media/${event.seq}`, this.serverBase()),
-              { authorization: `Bearer ${identity.token}`, 'x-starpost-id': identity.botId }, incomingImage);
+              await this.authHeaders(), incomingImage);
           } catch { text += ' [图片暂时无法读取]'; }
         }
         if (imageBytes && collectImage) {

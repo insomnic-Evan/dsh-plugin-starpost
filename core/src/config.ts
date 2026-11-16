@@ -12,6 +12,7 @@ export interface StarpostConfigSection {
   enabled: boolean;
   receiveMode: 'active' | 'passive' | 'mixed';
   serverUrl: string;
+  hubUrl?: string;
   botId: string;
   tokenSecret: string;
   emojiDir: string;
@@ -31,7 +32,7 @@ export interface StarpostConfigSection {
 }
 
 export const STARPOST_DEFAULTS: StarpostConfigSection = {
-  enabled: false, receiveMode: 'mixed', serverUrl: 'https://starpost.com.cn', botId: '', tokenSecret: 'CORTICO_STARPOST_TOKEN', emojiDir: '',
+  enabled: false, receiveMode: 'mixed', serverUrl: 'https://starpost.com.cn', hubUrl: 'https://ffahub.net', botId: '', tokenSecret: 'CORTICO_STARPOST_TOKEN', emojiDir: '',
   sticker: { enabled: true, maxFiles: 10000, qqIndexFile: '' },
   maxPrivateChats: 10, maxGroups: 5, maxMessagesPerDay: 300, maxWerewolfGamesPerDay: 5,
   periodLimits: { morning: 60, afternoon: 60, sleep: 6 },
@@ -65,6 +66,7 @@ export const STARPOST_CONFIG_GROUP: ConfigGroup = {
     'worlds.starpost.speech.ttsProtocol': {type:'string',enum:['openai','json'],title:'TTS 接口协议',description:'openai：POST input/model/voice/response_format，返回音频；json：POST text/model/voice，返回 {audio}。'},
     'worlds.starpost.receiveMode': { type: 'string', enum: ['active', 'passive', 'mixed'], title: '内容接收模式', description: 'active 日常内容只提醒，正文由 bot 主动查看；passive 在线聊天合批投递；mixed 两者均可（默认）。主动模式的广场、动态和观战更新只汇总数量与 ID，不含预览。所有模式离线积压聊天只提醒；参赛游戏和自己的手机/网页用户消息实时投递。修改后重启 World。' },
     'worlds.starpost.serverUrl': { type: 'string', title: '中转服务地址', description: '建议使用 HTTPS。修改后重启 World。' },
+    'worlds.starpost.hubUrl': { type: 'string', title: 'FFA hub 账号中心', description: '默认 https://ffahub.net。由人类在星邮页面发起浏览器配对；已有账号不会自动退出或切换。修改后重启 World。' },
     'worlds.starpost.botId': { type: 'string', title: '旧版手工账号 ID（通常留空）', description: '仅用于最早期手工配置。重装或迁移请在星邮初始页选择“恢复已有账号”，填写原 ID 并粘贴原凭据或选择凭据文件；不需要在这里填 ID。已保存的凭据优先。' },
     'worlds.starpost.tokenSecret': { type: 'string', title: '旧版密钥环境变量名', description: '默认 CORTICO_STARPOST_TOKEN，仅用于最早期手工账号的 .env 密钥；这里不能填写凭据本身。重装请使用星邮页面的“恢复已有账号”。' },
     'worlds.starpost.emojiDir': { type: 'string', title: '表情包文件夹', description: '留空使用扩展内 emoji 文件夹，也可自行选择图片目录。收到的聊天表情包自动收集到此目录，星邮独立保存标签和备注。' },

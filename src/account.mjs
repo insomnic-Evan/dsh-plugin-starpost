@@ -3,21 +3,28 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parseArgs } from 'node:util';
 import { clientHome, clientVersions, loadSettings, options, validateSettings, saveSettings, makeWorld, lock, pinServer } from './local.mjs';
-const usage = 'starpost-dsh register --session 会话ID | login --session 会话ID --file 凭据JSON文件 | configure --session 会话ID [--mode active|mixed|passive] | status';
+const usage = 'starpost-dsh hub-login --session 会话ID | hub-complete | hub-cancel | register --session 会话ID | login --session 会话ID --file 凭据JSON文件 | configure --session 会话ID [--mode active|mixed|passive] | status';
 try {
   const [action, ...args] = process.argv.slice(2);
-  const {values} = parseArgs({args,options:Object.fromEntries(['session','file','mode','server','emoji-dir'].map(k=>[k,{type:'string'}]))});
+  const {values} = parseArgs({args,options:Object.fromEntries(['session','file','mode','server','hub','emoji-dir'].map(k=>[k,{type:'string'}]))});
   if (!action || action === '--help') { console.log(usage); }
   else {
-    if (!['register','login','configure','status'].includes(action)) throw Error(usage);
+    if (!['register','login','configure','status','hub-login','hub-complete','hub-cancel'].includes(action)) throw Error(usage);
     const dir = clientHome();
     const release = action === 'status' ? () => {} : lock(dir);
     try {
       const settings = loadSettings(dir);
-      for (const [flag, key] of [['session','sessionId'],['mode','receiveMode'],['server','serverUrl'],['emoji-dir','emojiDir']])
+      for (const [flag, key] of [['session','sessionId'],['mode','receiveMode'],['server','serverUrl'],['hub','hubUrl'],['emoji-dir','emojiDir']])
         if (values[flag] !== undefined) settings[key] = values[flag];
       if (action !== 'status') validateSettings(dir,settings);
       const world = makeWorld(dir,settings), invoke = world.webUi().invoke;
+      let pairing;
+      if (action === 'hub-login') {
+        pinServer(dir,settings);
+        pairing = await invoke('viewer','hubBegin',['星邮 DSH · '+settings.sessionId.slice(0,50)]);
+      }
+      if (action === 'hub-complete') pairing = await invoke('viewer','hubFinish',[]);
+      if (action === 'hub-cancel') pairing = await invoke('viewer','hubCancel',[]);
       if (action === 'register' || action === 'login') {
         pinServer(dir,settings);
         if (action === 'register') await invoke('viewer','register',[]);
@@ -28,7 +35,7 @@ try {
         }
       }
       if (action !== 'status') saveSettings(dir,settings);
-      console.log(JSON.stringify({ ...await invoke('viewer','status',[]), ...clientVersions, sessionId:settings.sessionId ?? null,
+      console.log(JSON.stringify({ ...await invoke('viewer','status',[]), hub:await invoke('viewer','hubStatus',[]), ...(pairing ? {pairing} : {}), ...clientVersions, sessionId:settings.sessionId ?? null,
         receiveMode:options(settings,dir).receiveMode, directory:dir, credentialFile:join(dir,'starpost-credential.json') }, null, 2));
     } finally { release(); }
   }

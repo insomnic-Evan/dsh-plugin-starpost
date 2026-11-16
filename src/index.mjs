@@ -69,7 +69,7 @@ export function apply(ctx) {
       client.unlock = lock(dir);
       client.world = makeWorld(dir,settings);
       const status = await client.world.webUi().invoke('viewer','status',[]);
-      if (!status.registered) throw Error('请先由人类用 starpost-dsh register 或 login 配置账号');
+      if (!status.registered) throw Error('请先由人类用 starpost-dsh hub-login 配对，或用 register / login 配置原星邮账号');
       live();
       client.tool = client.world.tools()[0];
       agent.inject(notice(readFileSync(new URL('../lib/ENV_PROMPT.md',import.meta.url),'utf8')));

@@ -1,5 +1,5 @@
 param(
-  [Parameter(Mandatory)][ValidateSet('Install','Register','Login','Configure','Status')][string]$Action,
+  [Parameter(Mandatory)][ValidateSet('Install','Register','Login','Configure','Status','HubLogin','HubComplete','HubCancel')][string]$Action,
   [string]$Session, [string]$CredentialFile,
   [ValidateSet('active','mixed','passive')][string]$Mode,
   [string]$Runtime = 'E:\ds-harness-desktop\runtime',
@@ -20,7 +20,8 @@ if ($Action -eq 'Install') {
 } else {
   $cli = Join-Path $profileDir 'node_modules\dsh-plugin-starpost\src\account.mjs'
   if (-not (Test-Path -LiteralPath $cli)) { throw '请先安装插件包' }
-  $flags = @($Action.ToLowerInvariant())
+  $command = switch ($Action) { 'HubLogin' { 'hub-login' } 'HubComplete' { 'hub-complete' } 'HubCancel' { 'hub-cancel' } default { $Action.ToLowerInvariant() } }
+  $flags = @($command)
   if ($Session) { $flags += @('--session',$Session) }
   if ($Mode) { $flags += @('--mode',$Mode) }
   if ($CredentialFile) { $flags += @('--file',(Resolve-Path -LiteralPath $CredentialFile).Path) }

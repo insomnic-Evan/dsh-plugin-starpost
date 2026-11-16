@@ -24,6 +24,7 @@ export function options(settings, dir) {
   if (!(url.protocol === 'https:' || (url.protocol === 'http:' && ['127.0.0.1','localhost','[::1]'].includes(url.hostname))) ||
     url.username || url.password || url.pathname !== '/' || url.search || url.hash) throw Error('请使用 HTTPS 服务地址，本机测试可用 HTTP 回环地址');
   cfg.serverUrl = url.origin;
+  cfg.hubUrl = settings.hubUrl ?? cfg.hubUrl;
   const pin = join(dir, 'server-origin');
   if (existsSync(pin) && readFileSync(pin, 'utf8') !== url.origin) throw Error('账号数据已绑定其他服务器，请为新服务器选择独立的数据目录');
   cfg.receiveMode = settings.receiveMode ?? cfg.receiveMode;
