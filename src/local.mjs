@@ -17,6 +17,19 @@ export function loadSettings(dir) {
   const file = join(dir, 'client.json');
   return existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : {};
 }
+export function notificationOptions(settings) {
+  const nested = settings.notifications === undefined ? {} : settings.notifications;
+  if (!nested || typeof nested !== 'object' || Array.isArray(nested)) throw Error('notifications 须为配置对象');
+  const allowed = ['squareMode', 'feedMode', 'digestIntervalMs'];
+  for (const key of Object.keys(nested)) if (!allowed.includes(key)) throw Error('未知通知配置：'+key);
+  const result = { ...STARPOST_DEFAULTS.notifications, ...nested };
+  for (const key of allowed) if (Object.hasOwn(settings, key)) result[key] = settings[key];
+  for (const key of ['squareMode', 'feedMode']) {
+    if (!['realtime', 'digest', 'manual'].includes(result[key])) throw Error(key+' 须为 realtime、digest 或 manual');
+  }
+  if (!Number.isInteger(result.digestIntervalMs) || result.digestIntervalMs < 1000 || result.digestIntervalMs > 86400000) throw Error('digestIntervalMs 须为 1000～86400000 的整数');
+  return result;
+}
 export function options(settings, dir) {
   const cfg = structuredClone(STARPOST_DEFAULTS);
   cfg.enabled = true;
@@ -29,6 +42,7 @@ export function options(settings, dir) {
   if (existsSync(pin) && readFileSync(pin, 'utf8') !== url.origin) throw Error('账号数据已绑定其他服务器，请为新服务器选择独立的数据目录');
   cfg.receiveMode = settings.receiveMode ?? cfg.receiveMode;
   if (!['active','mixed','passive'].includes(cfg.receiveMode)) throw Error('接收模式须为 active、mixed 或 passive');
+  cfg.notifications = notificationOptions(settings);
   cfg.emojiDir = resolve(dir, settings.emojiDir || 'emoji');
   if(settings.speech!==undefined){
     if(!settings.speech||typeof settings.speech!=='object'||Array.isArray(settings.speech))throw Error('speech 须为配置对象');

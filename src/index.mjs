@@ -1,7 +1,9 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { clientHome, clientVersions, loadSettings, makeWorld, lock } from './local.mjs';
+import { clientHome, clientVersions, loadSettings, makeWorld, options, lock } from './local.mjs';
+import { Config, registerNotificationSettings } from './settings.mjs';
+export { Config } from './settings.mjs';
 import { STARPOST_TOOL_DECLS } from '../lib/core.mjs';
 
 export const name = 'dsh-plugin-starpost';
@@ -10,9 +12,13 @@ const envelope = (content, source) => ({id:randomUUID(), role:'user', content, s
 const notice = text => envelope([{type:'text', text}], {form:'notice', summary:'星邮通知'});
 const pending = agent => [...agent.inbox.nextStep, ...agent.inbox.nextTurn].filter(m => m.source?.kind === name);
 
-export function apply(ctx) {
+export function apply(ctx, entry = {}) {
   const dir = clientHome();
   const settings = loadSettings(dir);
+  const fileConfig = options(settings, dir);
+  const notificationConfig = registerNotificationSettings(ctx, {
+    receiveMode: fileConfig.receiveMode, ...fileConfig.notifications, ...Config(entry),
+  });
   const calls = new AsyncLocalStorage();
   let attachments;
   ctx.inject(['attachments'], scoped => {
@@ -67,7 +73,9 @@ export function apply(ctx) {
     client.ready = retired.then(async () => {
       live();
       client.unlock = lock(dir);
-      client.world = makeWorld(dir,settings);
+      const effectiveSettings = { ...settings, ...notificationConfig() };
+      client.settings = options(effectiveSettings, dir);
+      client.world = makeWorld(dir,effectiveSettings);
       const status = await client.world.webUi().invoke('viewer','status',[]);
       if (!status.registered) throw Error('请先由人类用 starpost-dsh hub-login 配对，或用 register / login 配置原星邮账号');
       live();
@@ -103,6 +111,8 @@ export function apply(ctx) {
       if (args.family === 'client' && args.action === 'status') {
         return JSON.stringify({...clientVersions, sessionId:agent.id, bound:settings.sessionId === agent.id,
           ready:current?.agent === agent && Boolean(current.tool) && !current.error,
+          ...(settings.sessionId === agent.id ? { notificationSettings: current?.settings?.notifications ?? options({ ...settings, ...notificationConfig() }, dir).notifications,
+            settingsApply: 'restart' } : {}),
           ...(current?.agent === agent && current.error ? {error:current.error.message} : {})});
       }
       if (!settings.sessionId || agent.id !== settings.sessionId) throw Error('此会话未绑定星邮账号。用 client/status 查看会话 ID，再由人类在终端完成绑定。');

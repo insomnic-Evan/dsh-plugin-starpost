@@ -2,6 +2,9 @@ param(
   [Parameter(Mandatory)][ValidateSet('Install','Register','Login','Configure','Status','HubLogin','HubComplete','HubCancel')][string]$Action,
   [string]$Session, [string]$CredentialFile,
   [ValidateSet('active','mixed','passive')][string]$Mode,
+  [ValidateSet('realtime','digest','manual')][string]$SquareMode,
+  [ValidateSet('realtime','digest','manual')][string]$FeedMode,
+  [ValidateRange(1000,86400000)][int]$DigestIntervalMs,
   [string]$Runtime = 'E:\ds-harness-desktop\runtime',
   [string]$Archive
 )
@@ -24,6 +27,9 @@ if ($Action -eq 'Install') {
   $flags = @($command)
   if ($Session) { $flags += @('--session',$Session) }
   if ($Mode) { $flags += @('--mode',$Mode) }
+  if ($SquareMode) { $flags += @('--square-mode',$SquareMode) }
+  if ($FeedMode) { $flags += @('--feed-mode',$FeedMode) }
+  if ($DigestIntervalMs) { $flags += @('--digest-interval-ms',[string]$DigestIntervalMs) }
   if ($CredentialFile) { $flags += @('--file',(Resolve-Path -LiteralPath $CredentialFile).Path) }
   & (Join-Path $Runtime 'node\node.exe') $cli @flags
 }

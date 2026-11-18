@@ -2,7 +2,7 @@ export type NotificationMode = 'realtime' | 'digest' | 'manual';
 type Category = 'square' | 'feed' | 'watch';
 export interface NotificationSettings {
   squareMode: NotificationMode;
-  feedMode: Exclude<NotificationMode, 'manual'>;
+  feedMode: NotificationMode;
   digestIntervalMs: number;
 }
 export const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = { squareMode: 'digest', feedMode: 'digest', digestIntervalMs: 300000 };
@@ -27,8 +27,8 @@ const categoryOf = (type: string): Category | null => ['square.bot', 'square.gro
 export function notificationSettings(settings?: Partial<NotificationSettings>, active = false): NotificationSettings {
   const interval = settings?.digestIntervalMs;
   return {
-    squareMode: !active && (settings?.squareMode === 'realtime' || settings?.squareMode === 'manual') ? settings.squareMode : 'digest',
-    feedMode: !active && settings?.feedMode === 'realtime' ? 'realtime' : 'digest',
+    squareMode: settings?.squareMode === 'manual' ? 'manual' : !active && settings?.squareMode === 'realtime' ? 'realtime' : 'digest',
+    feedMode: settings?.feedMode === 'manual' ? 'manual' : !active && settings?.feedMode === 'realtime' ? 'realtime' : 'digest',
     digestIntervalMs: typeof interval === 'number' && Number.isInteger(interval) && interval >= 1000 && interval <= 86400000
       ? interval : DEFAULT_NOTIFICATION_SETTINGS.digestIntervalMs,
   };
@@ -65,7 +65,8 @@ export class NotificationDigest {
     const category = categoryOf(event.type);
     if (!category) return false;
     if (!active && category === 'watch') return false;
-    const mode = category === 'feed' ? settings.feedMode : settings.squareMode;
+    // Spectating reminders are independent of discovery/square notifications.
+    const mode = category === 'watch' ? 'digest' : category === 'feed' ? settings.feedMode : settings.squareMode;
     if (mode === 'realtime') return false;
     if (mode === 'manual') return true;
     const data = event.data, id = category === 'feed' ? data?.postId : category === 'watch' ? data?.gameId : data?.id ?? data?.gameId;
@@ -92,16 +93,17 @@ export class NotificationDigest {
   }
   remove(category: Category, id: string): void { this.items.delete(`${category}:${id}`); this.resetEmpty(); }
   applySettings(settings: NotificationSettings): void {
-    if (settings.squareMode === 'manual') {
-      for (const [key, item] of this.items) if (item.category === 'square') this.items.delete(key);
-      this.overflowEvents.square = 0;
-      this.resetEmpty();
+    for (const category of ['square', 'feed'] as const) {
+      if ((category === 'square' ? settings.squareMode : settings.feedMode) !== 'manual') continue;
+      for (const [key, item] of this.items) if (item.category === category) this.items.delete(key);
+      this.overflowEvents[category] = 0;
     }
+    this.resetEmpty();
   }
   dueIn(now: number, settings: NotificationSettings): number {
     if (this.firstQueuedAt === null) return Infinity;
     if ((this.overflowEvents.square && settings.squareMode === 'realtime') || (this.overflowEvents.feed && settings.feedMode === 'realtime')) return 0;
-    if ([...this.items.values()].some(item => (item.category === 'feed' ? settings.feedMode : settings.squareMode) === 'realtime')) return 0;
+    if ([...this.items.values()].some(item => item.category !== 'watch' && (item.category === 'feed' ? settings.feedMode : settings.squareMode) === 'realtime')) return 0;
     return Math.max(0, this.firstQueuedAt + settings.digestIntervalMs - now);
   }
   build() {

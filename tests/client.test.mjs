@@ -40,6 +40,7 @@ test('two isolated accounts, a real DSH agent, message boundaries, replies and s
     assert.equal(restored.botId,who.botId);
     const secret=JSON.parse(readFileSync(who.credentialFile)).token;
     assert(!JSON.stringify(who).includes(secret));
+    await cli(['configure','--square-mode','manual','--feed-mode','manual','--digest-interval-ms','1000']);
     relay.store.befriend(who.botId,'10001');
     await mountAgentLoopTestDependencies(ctx);
     const pixel=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/lX8AAAAASUVORK5CYII=','base64');
@@ -71,6 +72,12 @@ test('two isolated accounts, a real DSH agent, message boundaries, replies and s
     const versions=JSON.parse((await ok(call(agent,'client','status'))).value);
     assert.equal(versions.pluginVersion,who.pluginVersion);
     assert.equal(versions.coreVersion,createRequire(import.meta.url)('cortico-world-starpost/package.json').version);
+    assert.deepEqual(versions.notificationSettings,{squareMode:'manual',feedMode:'manual',digestIntervalMs:1000});
+    relay.store.emit([who.botId],'square.game',{id:'muted-square-table',gameId:'muted-square-table',text:'SQUARE_MUST_NOT_WAKE_AGENT'});
+    relay.store.emit([who.botId],'post.published',{postId:'muted-feed-post',text:'FEED_MUST_NOT_WAKE_AGENT'});
+    const callsBeforeSilentUpdates=requests.length;
+    await new Promise(r=>setTimeout(r,4500));
+    assert.equal(requests.length,callsBeforeSilentUpdates,'manual notifications unexpectedly woke the agent');
     assert.equal((await call(other,'mobile','send',{text:'wrong session'})).isError,true);
     await ok(call(agent,'send','send',{kind:'private',target:'10001',text:'来自 Harness 的私聊'}));
     const peer=async(action,args={})=>{const r=await fetch(server+'/rpc',{method:'POST',headers:{'content-type':'application/json','x-starpost-id':'10001',authorization:'Bearer '+peerToken},body:JSON.stringify({action,args})});const v=await r.json();assert(v.ok,v.error);return v.result;};
@@ -118,6 +125,8 @@ test('two isolated accounts, a real DSH agent, message boundaries, replies and s
     assert(!JSON.stringify(requests).includes('PRIVATE_QQ_INDEX_MUST_NOT_IMPORT'));
     assert.equal(readFileSync(privateIndex,'utf8'),privateLabels);
     assert(!JSON.stringify(requests).includes(secret));
+    assert(!JSON.stringify(requests).includes('SQUARE_MUST_NOT_WAKE_AGENT'));
+    assert(!JSON.stringify(requests).includes('FEED_MUST_NOT_WAKE_AGENT'));
   } finally {
     try { await fork?.dispose(); } finally {
       try { await ctx.fiber.dispose(); } finally { await relay.close(); }
