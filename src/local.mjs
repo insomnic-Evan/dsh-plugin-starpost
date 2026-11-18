@@ -3,7 +3,7 @@ import { homedir } from 'node:os';
 import { resolve, join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { randomUUID } from 'node:crypto';
-import { StarpostWorld, STARPOST_DEFAULTS, relayVersion } from '../lib/core.mjs';
+import { StarpostWorld, STARPOST_DEFAULTS, relayVersion, starpostIdentityOrigin } from '../lib/core.mjs';
 
 export const clientVersions = Object.freeze({
   pluginVersion: JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version,
@@ -39,7 +39,7 @@ export function options(settings, dir) {
   cfg.serverUrl = url.origin;
   cfg.hubUrl = settings.hubUrl ?? cfg.hubUrl;
   const pin = join(dir, 'server-origin');
-  if (existsSync(pin) && readFileSync(pin, 'utf8') !== url.origin) throw Error('账号数据已绑定其他服务器，请为新服务器选择独立的数据目录');
+  if (existsSync(pin) && starpostIdentityOrigin(readFileSync(pin, 'utf8').trim()) !== starpostIdentityOrigin(url.origin)) throw Error('账号数据已绑定其他服务器，请为新服务器选择独立的数据目录');
   cfg.receiveMode = settings.receiveMode ?? cfg.receiveMode;
   if (!['active','mixed','passive'].includes(cfg.receiveMode)) throw Error('接收模式须为 active、mixed 或 passive');
   cfg.notifications = notificationOptions(settings);

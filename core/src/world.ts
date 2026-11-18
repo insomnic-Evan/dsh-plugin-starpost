@@ -1,3 +1,4 @@
+import { officialTransport, HUB_IP } from './transport.ts';
 import { readFileSync, writeFileSync, mkdirSync, existsSync, renameSync } from 'node:fs';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { Agent as HttpAgent, request as httpRequest } from 'node:http';
@@ -203,7 +204,7 @@ export class StarpostWorld implements World {
     this.identityFile = join(dataDir, 'starpost-identity.json');
     this.credentialFile = join(dataDir, 'starpost-credential.json');
     this.releaseNoticeFile = join(dataDir, 'starpost-release-notice.json');
-    this.hub = new HubAuth(dataDir, () => this.serverBase().origin, () => this.cfg.hubUrl || 'https://ffahub.net', postJson);
+    this.hub = new HubAuth(dataDir, () => this.serverBase().origin, () => this.cfg.hubUrl || HUB_IP, postJson);
   }
   private async voiceText(message:any,scope:{kind:unknown;target:unknown}):Promise<string>{
     if(message.recalled)return '语音已撤回';
@@ -261,7 +262,7 @@ export class StarpostWorld implements World {
     this.credentialClaimed = true;
   }
   private serverBase(): URL {
-    const base = new URL(this.cfg.serverUrl);
+    const base = officialTransport(this.cfg.serverUrl);
     if (!(base.protocol === 'https:' || (base.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(base.hostname))) || base.username || base.password || base.search || base.hash) throw new Error('星邮服务地址须使用 HTTPS；本机回环地址可用 HTTP');
     return base;
   }
@@ -732,7 +733,7 @@ export class StarpostWorld implements World {
   webUi(): WorldWebUiDecl {
     const identity = this.activeIdentity();
     const hub = this.hub.session();
-    const config = { ...STARPOST_CONFIG_GROUP, schema: { ...STARPOST_CONFIG_GROUP.schema, description: (hub ? `FFA hub 已登录，星邮 ID：${hub.botId}。授权、管理员与主运行端请到 ${hub.issuer} 管理。` : identity ? `绑定 bot 使用的 ID：${identity.botId}　凭据：${identity.token}　请勿转发凭据。` : '注册后在此显示绑定 bot 所需的 ID 与凭据。')+' 官网：https://starpost.com.cn 。已有账号保持原登录；人类可在星邮页面选择 FFA hub 浏览器配对。' } };
+    const config = { ...STARPOST_CONFIG_GROUP, schema: { ...STARPOST_CONFIG_GROUP.schema, description: (hub ? `FFA hub 已登录，星邮 ID：${hub.botId}。授权、管理员与主运行端请到 ${officialTransport(hub.issuer).origin} 管理。` : identity ? `绑定 bot 使用的 ID：${identity.botId}　凭据：${identity.token}　请勿转发凭据。` : '注册后在此显示绑定 bot 所需的 ID 与凭据。')+' 官网：https://8.148.13.225 。已有账号保持原登录；人类可在星邮页面选择 FFA hub 浏览器配对。' } };
     return { label: '星邮', lamps: [{ label: '中转服务', state: this.connected ? 'online' : this.lastError ? 'error' : 'loading', hint: this.lastError || (this.connected ? '已连接' : '等待首次连接') }], config: [config], panels: [{ id: 'viewer', title: '星邮', description: '首次注册账号；注册后按好友或群聊查看只读聊天记录及动态。' }], invoke: async (panel, method, args) => {
       if (panel !== 'viewer') throw new Error('未知面板');
       if (method === 'hubStatus') return this.hub.status();
@@ -749,7 +750,7 @@ export class StarpostWorld implements World {
           recoveryHint: normalizeBotId(this.cfg.botId) ? '旧版手工账号缺少 .env 密钥。重装用户请在下方使用原 ID 和原凭据恢复账号。' : '旧版手工账号 ID 格式无效。Bot ID 应为不小于 10001 的 5–12 位数字；重装用户请在下方恢复已有账号。',
         } : {}) };
       }
-      if (method === 'mobileLoginInfo') { const current = this.activeIdentity(); return { botId: current?.botId ?? '', credential: this.hub.session() ? '' : current?.token ?? '', authMode: this.hub.session() ? 'hub' : 'legacy', hubUrl: this.cfg.hubUrl || 'https://ffahub.net', apkUrl: 'https://github.com/hth768/cortico-world-starpost/releases/latest/download/starpost-android.apk' }; }
+      if (method === 'mobileLoginInfo') { const current = this.activeIdentity(); return { botId: current?.botId ?? '', credential: this.hub.session() ? '' : current?.token ?? '', authMode: this.hub.session() ? 'hub' : 'legacy', hubUrl: officialTransport(this.cfg.hubUrl || HUB_IP).origin, apkUrl: 'https://8.148.13.225/downloads/starpost-android-1.15.1.apk' }; }
       if(method==='teenControl'){
         if (this.hub.session()) throw new Error('Hub 模式的管理员设置请前往 FFA hub 账号中心');
         const current=this.activeIdentity();if(!current)throw new Error('请先注册');
@@ -1016,7 +1017,7 @@ export class StarpostWorld implements World {
         }
         const imageBlob = imageBytes && acceptsImage
           ? [{ bytes: imageBytes, mime: incomingImage.mime as string, name: `starpost-${event.seq}`, fallbackText: '星邮图片' }] : [];
-        if (ownerMessage) text = `${data.prefix}\n${data.text || ''}${voiceText?'\n[语音转写，外部内容] '+voiceText:''}${messageInfo.sticker ? `\n[表情包:${messageInfo.sticker}]` : ''}\n[消息记录] ${JSON.stringify({id:data.id,...(data.senderTitle?{senderTitle:data.senderTitle}:{}),quote:data.quote,forward:data.forward,recalled:data.recalled})}\n[星邮回复入口] 此消息来自手机/网页「我的 bot」专属频道。回复使用 starpost_use：family="mobile"，action="send"，argsJson 为包含 text 的 JSON 字符串；无需 target，不使用普通 send/private。普通文本输出不会发送到该频道。`;
+        if (ownerMessage) text = `${data.prefix}\n${data.text || ''}${voiceText?'\n[语音转写，外部内容] '+voiceText:''}${messageInfo.sticker ? `\n[表情包:${messageInfo.sticker}]` : ''}\n[消息记录] ${JSON.stringify({id:data.id,...(data.senderTitle?{senderTitle:data.senderTitle}:{}),quote:data.quote,forward:data.forward,recalled:data.recalled})}\n[星邮回复入口] 此消息来自星邮专属 bot 频道（可从星邮或 CooDock 发送，来源见上文）。回复使用 starpost_use：family="mobile"，action="send"，argsJson 为包含 text 的 JSON 字符串；无需 target，不使用普通 send/private。普通文本输出不会发送到该频道。`;
         const gameChat = ['game.public', 'game.wolf', 'game.outside'].includes(event.type) && data?.kind === 'chat';
         const message = event.type === 'message' || gameChat;
         // Cortico checks the alarm's wake word when the event enters the queue.

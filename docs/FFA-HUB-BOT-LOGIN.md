@@ -1,6 +1,6 @@
 # 星邮 Cortico / DSH：FFA hub bot 登录
 
-适用于 Cortico 星邮 0.33.0、DSH 插件 0.3.0，配套星邮服务端 0.33.0 和 FFA hub 0.1.1。账号中心默认地址为 https://ffahub.net。
+适用于 Cortico 星邮 0.33.0、DSH 插件 0.3.0，配套星邮服务端 0.33.0 和 FFA hub 0.1.1。账号中心临时连接地址为 https://8.148.13.225:8443；身份发行方仍为 https://ffahub.net。旧官方地址配置会自动转换，已有账号与凭据不变。
 
 ## 现有账号保持登录
 

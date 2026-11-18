@@ -9,6 +9,16 @@ import { options } from '../src/local.mjs';
 import { Config, registerNotificationSettings } from '../src/settings.mjs';
 import { Context } from '@deepseek-ai/cordis';
 
+test('official IP switch keeps the old server pin while rejecting unrelated servers', () => {
+  const dir=mkdtempSync(join(tmpdir(),'starpost-ip-settings-'));
+  try {
+    const pin=join(dir,'server-origin');writeFileSync(pin,'https://starpost.com.cn');
+    assert.equal(options({},dir).serverUrl,'https://8.148.13.225');
+    assert.equal(readFileSync(pin,'utf8'),'https://starpost.com.cn');
+    assert.throws(()=>options({serverUrl:'https://other.example'},dir),/其他服务器/);
+  } finally { rmSync(dir,{recursive:true,force:true}); }
+});
+
 test('notification config supports flat and nested client.json; validates instead of silently ignoring', () => {
   const dir = mkdtempSync(join(tmpdir(), 'starpost-settings-'));
   try {

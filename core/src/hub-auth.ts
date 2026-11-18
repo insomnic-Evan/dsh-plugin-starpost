@@ -2,6 +2,7 @@ import { generateKeyPairSync, randomUUID, sign } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync, renameSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { normalizeBotId } from './config.ts';
+import { officialTransport, starpostIdentityOrigin, hubIdentityOrigin } from './transport.ts';
 
 type Post = (url: URL, body: unknown, headers?: Record<string, string>) => Promise<{ status: number; body: any }>;
 interface Session {
@@ -34,7 +35,7 @@ export class HubAuth {
     writeFileSync(tmp, JSON.stringify(value), { mode: 0o600 }); renameSync(tmp, file);
   }
   private pin(value: { server: string; issuer: string }) {
-    if (value.server !== hubOrigin(this.server()) || value.issuer !== hubOrigin(this.issuer())) throw Error('Hub 账号已绑定其他服务地址，请恢复原地址或使用独立的数据目录');
+    if (starpostIdentityOrigin(hubOrigin(value.server)) !== starpostIdentityOrigin(hubOrigin(this.server())) || hubIdentityOrigin(hubOrigin(value.issuer)) !== hubIdentityOrigin(hubOrigin(this.issuer()))) throw Error('Hub 账号已绑定其他服务地址，请恢复原地址或使用独立的数据目录');
   }
   session(): Session | null {
     if (!existsSync(this.file)) return null;
@@ -50,10 +51,10 @@ export class HubAuth {
   status() {
     const s = this.session(), p = this.pending();
     return { mode: s ? 'hub' : 'legacy', ...(s ? { botId: s.botId, subject: s.subject, installationId: s.installationId, expiresAt: s.expiresAt, expired: s.expiresAt <= Date.now() } : {}),
-      ...(p ? { pending: { shortCode: p.shortCode, verificationUri: p.verificationUri, expiresAt: p.expiresAt, approved: Boolean(p.approved) } } : {}) };
+      ...(p ? { pending: { shortCode: p.shortCode, verificationUri: officialTransport(p.verificationUri).href, expiresAt: p.expiresAt, approved: Boolean(p.approved) } } : {}) };
   }
   private async request(base: string, path: string, body: unknown) {
-    const r = await this.post(new URL(path, base), body);
+    const r = await this.post(officialTransport(new URL(path, base)), body);
     if (r.status !== 200 || !r.body?.ok) throw Error(r.body?.message ?? r.body?.error ?? 'FFA hub 认证服务暂不可用');
     return r.body.result;
   }
@@ -62,20 +63,20 @@ export class HubAuth {
     if (this.pending()) throw Error('已有待完成的 Hub 配对，请继续或先取消');
     this.busy = true; const revision = ++this.revision;
     try {
-      const issuer = hubOrigin(this.issuer()), server = hubOrigin(this.server());
+      const issuer = hubIdentityOrigin(hubOrigin(this.issuer())), server = hubOrigin(this.server());
       const info = await this.request(server, '/hub/info', {});
       if (info.issuer !== issuer || info.service !== 'starpost') throw Error('星邮服务器配置的 Hub 与本机不一致');
       const { privateKey, publicKey } = generateKeyPairSync('ed25519');
       const installationId = randomUUID(), deviceId = randomUUID();
       const start = await this.request(issuer, '/v1/pairings', { service: 'starpost', label, deviceId, installationId, publicKey: publicKey.export({ format: 'jwk' }) });
       const uri = new URL(start.verificationUri);
-      if (uri.origin !== issuer || uri.pathname !== '/' || uri.username || uri.password || uri.searchParams.get('pair') !== start.pairingId) throw Error('Hub 返回的配对地址不合法');
+      if (![issuer, officialTransport(issuer).origin].includes(uri.origin) || uri.pathname !== '/' || uri.username || uri.password || uri.searchParams.get('pair') !== start.pairingId) throw Error('Hub 返回的配对地址不合法');
       const header = Buffer.from(JSON.stringify({ alg: 'EdDSA' })).toString('base64url');
       const payload = Buffer.from(JSON.stringify({ pairingId: start.pairingId, challenge: start.challenge, installationId, service: 'starpost' })).toString('base64url');
       const unsigned = `${header}.${payload}`, signature = sign(null, Buffer.from(unsigned), privateKey).toString('base64url');
       await this.request(issuer, '/v1/pairings/prove', { pairingId: start.pairingId, pollingSecret: start.pollingSecret, signature: `${unsigned}.${signature}` });
       if (revision !== this.revision) throw Error('配对已取消');
-      this.save(this.pendingFile, { version: 1, issuer, server, installationId, deviceId, pairingId: start.pairingId, pollingSecret: start.pollingSecret, shortCode: start.shortCode, verificationUri: uri.href, expectedBotId, expiresAt: Date.now() + 300000 });
+      this.save(this.pendingFile, { version: 1, issuer, server, installationId, deviceId, pairingId: start.pairingId, pollingSecret: start.pollingSecret, shortCode: start.shortCode, verificationUri: officialTransport(uri).href, expectedBotId, expiresAt: Date.now() + 300000 });
       return this.status();
     } finally { this.busy = false; }
   }
