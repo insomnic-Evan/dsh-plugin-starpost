@@ -3,6 +3,7 @@ import { homedir } from 'node:os';
 import { resolve, join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { randomUUID } from 'node:crypto';
+import { sections, readKey, setKey, check } from '../web/fields.mjs';
 import { StarpostWorld, STARPOST_DEFAULTS, relayVersion, starpostIdentityOrigin } from '../lib/core.mjs';
 
 export const clientVersions = Object.freeze({
@@ -44,6 +45,14 @@ export function options(settings, dir) {
   if (!['active','mixed','passive'].includes(cfg.receiveMode)) throw Error('接收模式须为 active、mixed 或 passive');
   cfg.notifications = notificationOptions(settings);
   cfg.emojiDir = resolve(dir, settings.emojiDir || 'emoji');
+  for (const group of [sections.limits, sections.media]) {
+    for (const field of group.fields.filter(field => field.key.includes('.'))) {
+      const value = readKey(settings, field.key);
+      if (value === undefined) continue;
+      if (!check(field, value)) throw Error(field.label+' 设置无效');
+      setKey(cfg, field.key, value);
+    }
+  }
   if(settings.speech!==undefined){
     if(!settings.speech||typeof settings.speech!=='object'||Array.isArray(settings.speech))throw Error('speech 须为配置对象');
     for(const [key,value]of Object.entries(settings.speech)){
@@ -65,8 +74,10 @@ export function validateSettings(dir, settings) {
   options(settings, dir);
   if (typeof settings.sessionId !== 'string' || !settings.sessionId.trim() || settings.sessionId.length > 512 || /[\x00-\x1f\x7f]/.test(settings.sessionId)) throw Error('请指定有效的 DSH 会话 ID');
 }
-export function saveSettings(dir, settings) {
-  validateSettings(dir,settings);
+export function saveSettings(dir, settings, { allowUnbound = false } = {}) {
+  if (allowUnbound && settings.sessionId === undefined) options(settings, dir);
+  else validateSettings(dir,settings);
+  mkdirSync(dir,{recursive:true,mode:0o700});
   const tmp = join(dir, randomUUID()+'.tmp');
   writeFileSync(tmp, JSON.stringify(settings,null,2)+'\n', {mode:0o600});
   renameSync(tmp,join(dir,'client.json'));

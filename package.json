@@ -1,14 +1,24 @@
 {
   "name": "dsh-plugin-starpost",
-  "version": "0.3.2",
-  "description": "星邮的 DeepSeek Harness bot 客户端，支持会话绑定、消息收发和折叠社交工具",
+  "version": "0.4.0",
+  "description": "星邮的 DeepSeek Harness bot 客户端，提供本机 Web 配置、FFA Hub 配对、消息收发和折叠社交工具",
   "license": "MIT",
   "type": "module",
   "main": "./src/index.mjs",
+  "exports": {
+    ".": "./src/index.mjs",
+    "./client": "./web/client.js",
+    "./package.json": "./package.json",
+    "./*": "./*"
+  },
   "bin": {
     "starpost-dsh": "./src/account.mjs"
   },
   "dsh": {
+    "client": {
+      "platform": "web",
+      "inject": ["@deepseek-ai/dsh-client-ui-settings"]
+    },
     "bundle": {
       "patch": "./cordis.patch.yml"
     }
@@ -19,6 +29,7 @@
   },
   "files": [
     "src/*.mjs",
+    "web",
     "lib",
     "cordis.patch.yml",
     "desktop.ps1",
@@ -35,12 +46,12 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/hth768/dsh-plugin-starpost.git"
+    "url": "git+https://github.com/insomnic-Evan/dsh-plugin-starpost.git"
   },
   "author": "hth768",
-  "homepage": "https://github.com/hth768/dsh-plugin-starpost#readme",
+  "homepage": "https://github.com/insomnic-Evan/dsh-plugin-starpost#readme",
   "bugs": {
-    "url": "https://github.com/hth768/dsh-plugin-starpost/issues"
+    "url": "https://github.com/insomnic-Evan/dsh-plugin-starpost/issues"
   },
   "keywords": [
     "deepseek-harness",

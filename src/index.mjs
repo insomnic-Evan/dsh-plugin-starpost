@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { clientHome, clientVersions, loadSettings, makeWorld, options, lock } from './local.mjs';
 import { Config, registerNotificationSettings } from './settings.mjs';
+import { makePanel, panelHandler, panelPath } from './panel.mjs';
 export { Config } from './settings.mjs';
 import { STARPOST_TOOL_DECLS } from '../lib/core.mjs';
 
@@ -25,7 +26,7 @@ export function apply(ctx, entry = {}) {
     attachments = scoped.attachments;
     scoped.effect(() => () => { attachments = undefined; }, 'starpost.attachments');
   });
-  let current, disposed = false, retired = Promise.resolve();
+  let current, disposed = false, retired = Promise.resolve(), offlineWork = Promise.resolve();
   const declaration = STARPOST_TOOL_DECLS[0];
   function attach(agent) {
     if (disposed || !settings.sessionId || agent.id !== settings.sessionId || current?.agent === agent) return;
@@ -70,14 +71,14 @@ export function apply(ctx, entry = {}) {
         }
       }
     };
-    client.ready = retired.then(async () => {
+    client.ready = Promise.all([retired,offlineWork]).then(async () => {
       live();
       client.unlock = lock(dir);
       const effectiveSettings = { ...settings, ...notificationConfig() };
       client.settings = options(effectiveSettings, dir);
       client.world = makeWorld(dir,effectiveSettings);
       const status = await client.world.webUi().invoke('viewer','status',[]);
-      if (!status.registered) throw Error('请先由人类用 starpost-dsh hub-login 配对，或用 register / login 配置原星邮账号');
+      if (!status.registered) throw Error('请在星邮设置页登录账号，或使用 starpost-dsh hub-login 配对。');
       live();
       client.tool = client.world.tools()[0];
       agent.inject(notice(readFileSync(new URL('../lib/ENV_PROMPT.md',import.meta.url),'utf8')));
@@ -99,6 +100,52 @@ export function apply(ctx, entry = {}) {
     });
     return retired;
   }
+  const optional = {};
+  for (const name of ['settings','sessionPersistence','sessionTitle','sessions']) {
+    ctx.inject([name], scoped => {
+      optional[name] = scoped[name];
+      scoped.effect(() => () => { delete optional[name]; }, 'starpost.panel.'+name);
+    });
+  }
+  ctx.inject(['webServer'], scoped => {
+    const starting = options({...settings,...notificationConfig()},dir);
+    const run = makePanel({
+      dir, entry:Config(entry), nativeSettings:()=>optional.settings,
+      runtime:()=>({sessionId:settings.sessionId, cfg:current?.settings ?? starting,
+        ready:Boolean(current?.tool && !current.error), error:current?.error?.message || ''}),
+      async sessions() {
+        const rows = new Map();
+        for (const s of await optional.sessionPersistence?.list() ?? []) {
+          if (s.origin !== 'subagent') rows.set(s.id,{id:s.id,title:s.title || s.agentPreset || ''});
+        }
+        for (const s of optional.sessions?.list() ?? []) {
+          if (s.meta?.origin === 'subagent') continue;
+          const title = optional.sessionTitle?.get(s)?.title;
+          rows.set(s.id,{id:s.id,title:title || rows.get(s.id)?.title || ''});
+        }
+        for (const agent of ctx.agents.list()) if (!rows.has(agent.id)) rows.set(agent.id,{id:agent.id,title:''});
+        return [...rows.values()];
+      },
+      async withWorld(task) {
+        let client, stopping;
+        do {
+          stopping=retired; client=current;
+          await Promise.all([stopping,client?.ready]);
+        } while (client!==current || stopping!==retired);
+        if (disposed) throw Error('星邮已停止');
+        if (client && client===current && client.unlock) {
+          const operation=Promise.resolve().then(()=>task(client.world));
+          client.work.add(operation);
+          try { return await operation; } finally { client.work.delete(operation); }
+        }
+        const release=lock(dir);
+        const operation=Promise.resolve().then(()=>task(makeWorld(dir,loadSettings(dir)))).finally(release);
+        offlineWork=operation.catch(()=>{});
+        return operation;
+      },
+    });
+    scoped.effect(()=>scoped.webServer.register({kind:'prefix',path:panelPath,handler:panelHandler(run)}),'starpost.panel.route');
+  });
   const off = ctx.tools.register({
     name:declaration.name,
     description:declaration.description+' 用 client/status 查看当前 DSH 会话 ID 与绑定状态。',
@@ -133,6 +180,6 @@ export function apply(ctx, entry = {}) {
   });
   ctx.on('agent/created',({agent})=>attach(agent));
   ctx.on('agent/disposed',({agent})=>detach(agent));
-  ctx.effect(() => async () => { disposed = true; off(); await detach(current?.agent); }, 'starpost.client');
+  ctx.effect(() => async () => { disposed = true; off(); await Promise.all([detach(current?.agent),offlineWork]); }, 'starpost.client');
   for (const agent of ctx.agents.list()) attach(agent);
 }
