@@ -692,8 +692,6 @@ export class StarpostWorld implements World {
             if (this.cfg.receiveMode === 'passive' && !this.backlogUntil[scope]) throw new Error('被动投递模式仅可主动查看积压会话');
             const limit = a.limit ?? 5;
             if (!Number.isSafeInteger(limit) || Number(limit) < 1 || Number(limit) > 50) throw new Error('limit 须为 1–50 的整数');
-            const check = await this.rpc('inbox.peek', { after: this.inboxSeen }) as { gameBusy?: boolean };
-            if (check.gameBusy) throw new Error('狼人杀对局期间不能查收普通聊天');
             const page = await this.rpc('chat.history', { kind, target, after: this.inboxSeen[scope] ?? 0, limit, incomingOnly: true });
             for(const m of page.messages)if(m.audio)m.voiceText=await this.voiceText(m,{kind,target});
             const messages = page.messages.map((m: any) => ({ id: m.id, sender: m.sender, senderNickname: m.senderNickname ?? '', ...(m.senderTitle ? {senderTitle:m.senderTitle} : {}), text: m.text,
@@ -848,8 +846,7 @@ export class StarpostWorld implements World {
   private async checkInboxReminder(): Promise<void> {
     if (!this.host || this.cfg.receiveMode === 'passive' || !this.inboxCheckAt || this.clock() < this.inboxCheckAt || this.suspendedUntil > this.clock()) return;
     try {
-      const result = await this.rpc('inbox.peek', { after: this.inboxSeen }) as { gameBusy?: boolean; conversations?: unknown[] };
-      if (result.gameBusy) { this.inboxCheckAt = this.clock() + 5 * 60000; this.saveCursor(); return; }
+      const result = await this.rpc('inbox.peek', { after: this.inboxSeen }) as { conversations?: unknown[] };
       this.inboxCheckAt = 0; this.saveCursor();
       await this.host.pushEvent({ type: 'starpost.inbox_check', ts: new Date(this.clock()).toISOString(), source: this.id,
         origin: 'internal', senderKey: 'starpost.system', text: `[星邮系统通知] 你预约的主动查收时间到了；目前有 ${result.conversations?.length ?? 0} 个会话出现未主动读取的消息。你可以用 starpost_use 的 inbox/peek 查看各会话，再自行决定是否阅读。` }, { trigger: 'flush' });
@@ -891,8 +888,7 @@ export class StarpostWorld implements World {
     await this.flushMessages();
   }
   private async scanBacklog(): Promise<void> {
-    const result = await this.rpc('inbox.peek', { after: this.inboxSeen }) as { gameBusy?: boolean; conversations: Array<{ kind: string; target: string; unread: number; latestCursor: number }> };
-    if (result.gameBusy) return;
+    const result = await this.rpc('inbox.peek', { after: this.inboxSeen }) as { conversations: Array<{ kind: string; target: string; unread: number; latestCursor: number }> };
     const who = this.activeIdentity()!.botId;
     const next: Record<string, number> = {};
     for (const item of result.conversations) {
