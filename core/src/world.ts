@@ -198,6 +198,10 @@ export class StarpostWorld implements World {
   private backlogUntil: Record<string, number> = {};
   private backlogScanPending = true;
   private readonly hub: HubAuth;
+  private addonInstanceId = '';
+  private addonLeaseDueAt = 0;
+  private addonLeaseSent = false;
+  private addonLeaseTimer: ReturnType<typeof setInterval> | null = null;
   constructor(private readonly cfg: StarpostConfigSection, private readonly botDir: string, _packageDir: string, private readonly dataDir: string, private readonly timezone: string, private readonly secret: (name: string) => string, private readonly clock: () => number = Date.now, private readonly extensionVersion: () => unknown = () => JSON.parse(readFileSync(STARPOST_PACKAGE_FILE, 'utf8')).version) {
     this.speech = new SpeechClient(cfg.speech, botDir, join(dataDir,'voice-work'), secret);
     this.cursorFile = join(dataDir, 'starpost-cursor.json');
@@ -335,6 +339,18 @@ export class StarpostWorld implements World {
     if (this.hub.session()) return this.hub.headers();
     const identity = this.activeIdentity(); if (!identity) throw new Error('星邮账号尚未登录');
     return { authorization: `Bearer ${identity.token}`, 'x-starpost-id': identity.botId };
+  }
+  private async syncAddonLease(release = false): Promise<void> {
+    const instanceId = this.addonInstanceId;
+    if (!instanceId || (release ? !this.addonLeaseSent : !this.host || this.addonLeaseDueAt > this.clock())) return;
+    if (!release) this.addonLeaseDueAt = this.clock() + 30_000;
+    try {
+      if (!this.hub.session()) return;
+      const headers = await this.hub.headers();
+      const response = await postJson(new URL('/hub/session', this.serverBase()),
+        { worldAddonOperation: release ? 'release' : 'renew', worldAddonLease: { worldId: this.id, instanceId } }, headers, { timeoutMs: 4000 });
+      if (!release) this.addonLeaseSent ||= response.status === 200 && response.body?.result?.active === true;
+    } catch { /* Existing servers and temporary disconnects leave an acknowledged lease to expire. */ }
   }
   private image(file: unknown): { mime: string; base64: string } | null {
     if (!file) return null;
@@ -739,7 +755,12 @@ export class StarpostWorld implements World {
       if (method === 'hubCancel') return this.hub.cancel();
       if (method === 'hubFinish') {
         const result = await this.hub.finish(this.activeIdentity()?.botId ?? null);
-        if (result.status === 'connected') { this.pollController?.abort(); this.pollController = new AbortController(); this.connected = false; this.lastError = ''; void this.poll(); }
+        if (result.status === 'connected') {
+          this.pollController?.abort(); this.pollController = new AbortController(); this.connected = false; this.lastError = '';
+          void this.poll();
+          this.addonLeaseDueAt = 0;
+          if (this.host) void this.trackWork(this.syncAddonLease());
+        }
         return result;
       }
       if (method === 'status') {
@@ -778,6 +799,9 @@ export class StarpostWorld implements World {
   async start(host: WorldHost): Promise<void> {
     this.speech.resume();
     this.host = host;
+    this.addonInstanceId = randomUUID();
+    this.addonLeaseSent = false;
+    this.addonLeaseDueAt = 0;
     this.connected = false; this.backlogScanPending = true;
     this.pollController = new AbortController();
     if (existsSync(this.cursorFile)) {
@@ -801,6 +825,8 @@ export class StarpostWorld implements World {
     if (this.cfg.receiveMode === 'passive' && this.inboxCheckAt) { this.inboxCheckAt = 0; this.saveCursor(); }
     await this.trackWork(this.poll());
     if (this.host !== host) return;
+    void this.trackWork(this.syncAddonLease());
+    this.addonLeaseTimer = setInterval(() => { void this.trackWork(this.syncAddonLease()); }, 30_000);
     this.timer = setInterval(() => { void this.trackWork(this.poll(true)); void this.trackWork(this.checkInboxReminder()); }, Math.max(1000, this.cfg.pollIntervalMs));
   }
   private async trackWork(work: Promise<unknown>): Promise<void> {
@@ -810,8 +836,12 @@ export class StarpostWorld implements World {
   async stop(): Promise<void> {
     this.speech.abort();
     if (this.timer) clearInterval(this.timer);
+    if (this.addonLeaseTimer) clearInterval(this.addonLeaseTimer);
+    this.addonLeaseTimer = null;
     this.timer = null; this.pollController?.abort(); this.pollController = null; this.host = null;
     await Promise.allSettled([...this.backgroundWork]);
+    await this.syncAddonLease(true);
+    this.addonInstanceId = '';
   }
   private saveCursor(): void {
     mkdirSync(this.dataDir, { recursive: true });
