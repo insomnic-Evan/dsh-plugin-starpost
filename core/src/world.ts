@@ -780,7 +780,7 @@ export class StarpostWorld implements World {
           throw new Error(body.error ?? '获取绑定码失败，请重新打开面板');
         return body.result;
       }
-      if (method === 'mobileLoginInfo') { const current = this.activeIdentity(); return { botId: current?.botId ?? '', credential: '', authMode: this.hub.session() ? 'hub' : 'legacy', hubUrl: officialTransport(this.cfg.hubUrl || HUB_IP).origin, apkUrl: 'https://8.148.13.225/downloads/starpost-android-1.15.1.apk' }; }
+      if (method === 'mobileLoginInfo') { const current = this.activeIdentity(); return { botId: current?.botId ?? '', credential: '', authMode: this.hub.session() ? 'hub' : 'legacy', hubUrl: officialTransport(this.cfg.hubUrl || HUB_IP).origin, apkUrl: 'https://8.137.59.209/downloads/ffa/apps/starpost/android/1.18.1/starpost-android.apk' }; }
       if(method==='teenControl'){
         if (this.hub.session()) throw new Error('Hub 模式的管理员设置请前往 FFA hub 账号中心');
         const current=this.activeIdentity();if(!current)throw new Error('请先注册');

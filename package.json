@@ -1,6 +1,6 @@
 {
   "name": "dsh-plugin-starpost",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "星邮的 DeepSeek Harness bot 客户端，提供本机 Web 配置、FFA Hub 配对、消息收发和折叠社交工具",
   "license": "MIT",
   "type": "module",
@@ -62,13 +62,13 @@
     "bot",
     "chat"
   ],
-  "starpostCoreVersion": "0.36.0",
+  "starpostCoreVersion": "0.36.1",
   "devDependencies": {
     "@deepseek-ai/dsh-agent-loop": "0.2.2-rc.1",
     "@deepseek-ai/dsh-agent-loop-testkit": "0.2.2-rc.1",
     "@deepseek-ai/dsh-llm": "0.2.2-rc.1",
     "@deepseek-ai/dsh-tools": "0.2.2-rc.1",
-    "cortico-world-starpost": "0.36.0",
+    "cortico-world-starpost": "0.36.1",
     "esbuild": "0.25.12"
   },
   "dependencies": {
