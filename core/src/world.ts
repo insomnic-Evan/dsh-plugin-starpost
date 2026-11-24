@@ -747,7 +747,7 @@ export class StarpostWorld implements World {
   webUi(): WorldWebUiDecl {
     const identity = this.activeIdentity();
     const hub = this.hub.session();
-    const config = { ...STARPOST_CONFIG_GROUP, schema: { ...STARPOST_CONFIG_GROUP.schema, description: (hub ? `FFA hub 已登录，星邮 ID：${hub.botId}。授权、管理员与主运行端请到 ${officialTransport(hub.issuer).origin} 管理。` : identity ? `绑定 bot 使用的 ID：${identity.botId}　凭据：${identity.token}　请勿转发凭据。` : '注册后在此显示绑定 bot 所需的 ID 与凭据。')+' 官网：https://8.148.13.225 。已有账号保持原登录；人类可在星邮页面选择 FFA hub 浏览器配对。' } };
+    const config = { ...STARPOST_CONFIG_GROUP, schema: { ...STARPOST_CONFIG_GROUP.schema, description: (hub ? `FFA hub 已登录，星邮 ID：${hub.botId}。授权、管理员与主运行端请到 ${officialTransport(hub.issuer).origin} 管理。` : identity ? `星邮 ID：${identity.botId}。点击星邮首页的「绑定凭据」可查看并复制。` : '注册后在此显示绑定 bot 所需的 ID 与凭据。')+' 官网：https://8.148.13.225 。已有账号保持原登录；人类可在星邮页面选择 FFA hub 浏览器配对。' } };
     return { label: '星邮', lamps: [{ label: '中转服务', state: this.connected ? 'online' : this.lastError ? 'error' : 'loading', hint: this.lastError || (this.connected ? '已连接' : '等待首次连接') }], config: [config], panels: [{ id: 'viewer', title: '星邮', description: '首次注册账号；注册后按好友或群聊查看只读聊天记录及动态。' }], invoke: async (panel, method, args) => {
       if (panel !== 'viewer') throw new Error('未知面板');
       if (method === 'hubStatus') return this.hub.status();
@@ -769,7 +769,18 @@ export class StarpostWorld implements World {
           recoveryHint: normalizeBotId(this.cfg.botId) ? '旧版手工账号缺少 .env 密钥。重装用户请在下方使用原 ID 和原凭据恢复账号。' : '旧版手工账号 ID 格式无效。Bot ID 应为不小于 10001 的 5–12 位数字；重装用户请在下方恢复已有账号。',
         } : {}) };
       }
-      if (method === 'mobileLoginInfo') { const current = this.activeIdentity(); return { botId: current?.botId ?? '', credential: this.hub.session() ? '' : current?.token ?? '', authMode: this.hub.session() ? 'hub' : 'legacy', hubUrl: officialTransport(this.cfg.hubUrl || HUB_IP).origin, apkUrl: 'https://8.148.13.225/downloads/starpost-android-1.15.1.apk' }; }
+      if (method === 'bindingCredential') {
+        const current = this.activeIdentity();
+        if (!current) throw new Error('请先登录星邮');
+        if (!this.hub.session()) return { botId: current.botId, credential: current.token };
+        const headers = await this.authHeaders();
+        const response = await postJson(new URL('/hub/session', this.serverBase()), { bindingOperation: 'issue' }, headers);
+        const body = response.body as { ok: boolean; result?: { botId: string; credential: string; expiresAt: number }; error?: string };
+        if (!body.ok || body.result?.botId !== current.botId || this.activeIdentity()?.botId !== current.botId || !this.hub.session())
+          throw new Error(body.error ?? '获取绑定码失败，请重新打开面板');
+        return body.result;
+      }
+      if (method === 'mobileLoginInfo') { const current = this.activeIdentity(); return { botId: current?.botId ?? '', credential: '', authMode: this.hub.session() ? 'hub' : 'legacy', hubUrl: officialTransport(this.cfg.hubUrl || HUB_IP).origin, apkUrl: 'https://8.148.13.225/downloads/starpost-android-1.15.1.apk' }; }
       if(method==='teenControl'){
         if (this.hub.session()) throw new Error('Hub 模式的管理员设置请前往 FFA hub 账号中心');
         const current=this.activeIdentity();if(!current)throw new Error('请先注册');

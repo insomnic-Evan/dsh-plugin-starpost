@@ -109,9 +109,10 @@ export function makePanel({dir, sessions, runtime, nativeSettings, withWorld, en
         return {};
       });
     }
-    if (!['profile','hubBegin','hubFinish','hubCancel','register','login'].includes(action)) throw error('接口不存在',404);
+    if (!['bindingCredential','profile','hubBegin','hubFinish','hubCancel','register','login'].includes(action)) throw error('接口不存在',404);
     return withWorld(async world => {
       const invoke=world.webUi().invoke, before=await account(world);
+      if (action==='bindingCredential') return invoke('viewer','bindingCredential',[]);
       if (action==='profile') {
         if (!before.botId) throw error('请先登录星邮');
         const result=await invoke('viewer','profileRead',[before.botId,'basic']);

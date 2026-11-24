@@ -44,6 +44,8 @@ test('first-use file configuration, stale writes, alternate account recovery, an
   await assert.rejects(run('save',{section:'notify',values:{serverUrl:'https://example.com'},revision:s.revision}),/无效/);
   await run('save',{section:'account',sessionId:'alpha',revision:s.revision});
   await run('login',{credential:{version:1,botId:'10001',token:legacy}});
+  assert.equal((await run('bindingCredential')).credential,legacy);
+  assert.ok(!JSON.stringify(await run('state')).includes(legacy));
   await assert.rejects(run('register',{confirm:true}),/已有/);
   await run('hubBegin');s=await run('state');
   assert.equal(s.account.pending.shortCode,'1234');assert.ok(!JSON.stringify(s).includes(polling));

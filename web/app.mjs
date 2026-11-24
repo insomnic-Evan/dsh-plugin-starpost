@@ -74,6 +74,19 @@ function accountPage() {
   hero.append(el('div',state.ready?'已连接到 DSH 会话':a.expired?'Hub 授权已到期':state.runtimeSession?'等待会话就绪':'尚未启用接收','badge'));
   if(state.runtimeError)hero.append(el('p',state.runtimeError,'aux'));
   if(a.registered)hero.append(btn('读取 bot 昵称',()=>action(async()=>{nickname=(await api('profile',{})).nickname;hero.querySelector('h2').textContent=nickname || '已登录的 bot';say(nickname?'已读取昵称。':'该 bot 尚未设置昵称。');})));
+  if(a.registered){
+    const output=el('output');let shown=0;
+    hero.append(btn('绑定凭据 · 显示并复制',()=>action(async()=>{
+      const value=await api('bindingCredential',{});
+      if(!hero.isConnected || state.account.botId!==value.botId)return;
+      output.textContent=value.credential;
+      const generation=++shown;
+      setTimeout(()=>{if(shown===generation)output.textContent='';},60_000);
+      let message='已复制';
+      try {await navigator.clipboard.writeText(value.credential);} catch {message='请手动复制显示的凭据';}
+      say(message+(value.expiresAt?' · 十分钟内有效，仅可使用一次':' · 原星邮账号凭据'));
+    }),true),output);
+  }
   const bind=card('DSH 会话'), select=el('select');
   select.append(new Option('选择一个会话',''));
   for(const s of state.sessions)select.append(new Option(s.title?s.title+' · '+s.id:s.id,s.id));
